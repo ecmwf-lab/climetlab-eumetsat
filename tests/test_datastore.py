@@ -9,6 +9,8 @@
 
 import climetlab as cml
 
+print(cml)
+
 
 def test_read():
     pass
