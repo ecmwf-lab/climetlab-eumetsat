@@ -14,11 +14,9 @@ import time
 import urllib
 
 import requests
-
 from climetlab import load_source
-
-from .multi import MultiSource
-from .prompt import APIKeyPrompt
+from climetlab.sources.multi import MultiSource
+from climetlab.sources.prompt import APIKeyPrompt
 
 # See https://eumetsatspace.atlassian.net/wiki/spaces/DSDS/pages/315818088/Using+the+APIs
 

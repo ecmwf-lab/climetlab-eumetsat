@@ -13,7 +13,7 @@ import climetlab as cml
 def test_read():
     ds = cml.load_source(
         "eumetsat-datastore",
-        # TODO
+        "myid:to:do",  # TODO
     )
     xds = ds.to_xarray()
     print(xds)
