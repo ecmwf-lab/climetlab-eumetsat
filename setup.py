@@ -20,7 +20,7 @@ def read(fname):
     return io.open(file_path, encoding="utf-8").read()
 
 
-package_name = "climetlab_eumetsat"
+package_name = "climetlab-eumetsat"
 
 version = None
 init_py = os.path.join(package_name.replace("-", "_"), "__init__.py")
@@ -48,9 +48,8 @@ setuptools.setup(
     extras_require=extras_require,
     zip_safe=True,
     entry_points={
-        "climetlab.datasets": [
-            "eumetsat-mydataset = climetlab_eumetsat.mydataset:Mydataset",
-            # "eumetsat-other-dataset = climetlab_eumetsat.other_dataset:OtherDatasetClass",
+        "climetlab.sources": [
+            "eumetsat-datastore = climetlab_eumetsat.eumetsat:EumetsatRetriever",
         ]
     },
     keywords="meteorology",
