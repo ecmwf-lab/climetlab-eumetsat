@@ -11,10 +11,9 @@ import climetlab as cml
 
 
 def test_read():
-    ds = cml.load_dataset(
-        "eumetsat-mydataset",
-        year="2021",
-        parameter="t2m",
+    ds = cml.load_source(
+        "eumetsat-datastore",
+        # TODO
     )
     xds = ds.to_xarray()
     print(xds)
