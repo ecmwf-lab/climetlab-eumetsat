@@ -9,18 +9,16 @@
 
 import climetlab as cml
 
-print(cml)
 
 
-def test_read():
-    pass
-    # ds = cml.load_source(
-    #     "eumetsat-datastore",
-    #     "myid:to:do",  # TODO
-    # )
-    # xds = ds.to_xarray()
-    # print(xds)
+def test_load_source():
+    ds = cml.load_source(
+        "eumetsat-datastore",
+        "EO:EUM:DAT:METOP:GLB-SST-NC",
+    )
+    xds = ds.to_xarray()
+    print(xds)
 
 
 if __name__ == "__main__":
-    test_read()
+    test_load_source()
