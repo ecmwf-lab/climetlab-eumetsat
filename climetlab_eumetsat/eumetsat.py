@@ -8,12 +8,13 @@
 #
 
 
-import json
 import os
 import time
 import urllib
+from collections.abc import Mapping
 
 import requests
+import yaml
 from climetlab import load_source
 from climetlab.sources.multi import MultiSource
 from climetlab.sources.prompt import APIKeyPrompt
@@ -21,53 +22,35 @@ from climetlab.sources.prompt import APIKeyPrompt
 # See https://eumetsatspace.atlassian.net/wiki/spaces/DSDS/pages/315818088/Using+the+APIs
 
 
-class EumetsatAPI(APIKeyPrompt):
+class EumetsatAPIKeyPrompt(APIKeyPrompt):
 
-    text_message = """
-An API key is needed to access this dataset. Please visit
-https://eoportal.eumetsat.int/ to register or sign-in
-then visit TODO to
-retrieve you API key.
+    register_or_sign_in_url = "https://eoportal.eumetsat.int/"
+    retrieve_api_key_url = "https://api.eumetsat.int/api-key/"
 
-Once this is done, please copy the text that look like:
-
-{
-   "consumer_key":    "xxxxxxxxxxx",
-   "consumer_secret": "xxxxxxxxxxx"
-}
-
-paste it the input field below and press ENTER.
-"""
-
-    markdown_message = """
-An API key is needed to access this dataset. Please visit
-<https://eoportal.eumetsat.int/> to register or sign-in
-then visit <https://TODO> to
-retrieve you API key.
-
-Once this is done, please copy the text that look like:
-
-<pre>
-{
-   "consumer_key":    "xxxxxxxxxxx",
-   "consumer_secret": "xxxxxxxxxxx"
-}
-</pre>
-
-paste it the input field below and press *ENTER*.
-"""
+    prompts = [
+        dict(
+            name="consumer_key",
+            example="aEfX6e1AvizULa48eo9R1v9A56md",
+            title="Consumer key",
+            hidden=True,
+            validate=r"\w{28}",
+        ),
+        dict(
+            name="consumer_secret",
+            example="Uiaz51e8XAfmA969o1vR4aELdev6",
+            title="Consumer secret",
+            hidden=True,
+            validate=r"\w{28}",
+        ),
+    ]
 
     rcfile = "~/.eumetsatapirc"
-    prompt = "EUMETSAT api configuration"
-
-    def validate(self, text):
-        return json.dumps(json.loads(text), indent=4)
 
 
-class Token:
+class Token(Mapping):
     def __init__(self):
-        with open(os.path.expanduser("~/.eumetsatapirc")) as f:
-            self._credentials = json.loads(f.read())
+        with open(os.path.expanduser(EumetsatAPIKeyPrompt.rcfile)) as f:
+            self._credentials = yaml.safe_load(f)
 
         self._token = {"expires_in": 0}
         self._last = 0
@@ -97,6 +80,19 @@ class Token:
     def __repr__(self):
         return self.token
 
+    # These methods make the token a lazy dictionary,
+    # where the token value is evaluated at the last minute
+    # so it does not expire
+    def __len__(self):
+        return 1
+
+    def __getitem__(self, k):
+        assert k == "Authorization"
+        return f"Bearer {self.token}"
+
+    def __iter__(self):
+        return iter(["Authorization"])
+
 
 # Try with EO:EUM:DAT:METOP:GLB-SST-NC
 
@@ -107,21 +103,27 @@ class Client:
 
     def features(
         self,
-        collection_id,
+        collection,
         start_date=None,
         end_date=None,
         polygon=None,
     ):
         query = {
             "format": "json",
-            "pi": collection_id,
+            "pi": collection,
         }
 
         if start_date is not None:
-            query["dtstart"] = start_date.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+            if isinstance(start_date, str):
+                query["dtstart"] = start_date
+            else:
+                query["dtstart"] = start_date.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
         if end_date is not None:
-            query["dtend"] = end_date.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+            if isinstance(start_date, str):
+                query["dtend"] = end_date
+            else:
+                query["dtend"] = end_date.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
         if polygon is not None:
             geo = ",".join([f"{pt[0]} {pt[1]}" for pt in polygon])
@@ -148,41 +150,58 @@ class Client:
             query["si"] += len(features)
 
     def products(self, *args, **kwargs):
+        sources = []
         for feature in self.features(*args, **kwargs):
             pid = urllib.parse.quote(feature["properties"]["identifier"])
             cid = urllib.parse.quote(feature["properties"]["parentIdentifier"])
             url = f"https://api.eumetsat.int/data/download/collections/{cid}/products/{pid}"
             size = feature["properties"]["productInformation"]["size"]
-            # print(json.dumps(feature, indent=4))
-            # break
-            return load_source(
-                "url",
-                url,
-                http_headers={"Authorization": f"Bearer {self.token}"},
-                fake_headers={
-                    "content-length": size * 1024,
-                    "content-encoding": "unknown",
-                },
+            sources.append(
+                load_source(
+                    "url",
+                    url,
+                    # We make that a callable as we may dowload that file when the token needs to be refreshed
+                    http_headers=self.token,
+                    fake_headers={
+                        # HEAD is not allowed, and we know the size
+                        "content-length": 1024 * size,
+                        # We know the size to the nearest kb, so turn off size checking
+                        "content-encoding": "unknown",
+                    },
+                    # Load lazily so we can do parallel downloads
+                    lazily=True,
+                ),
             )
+
+        return load_source("multi", sources)
 
 
 def client():
+    prompt = EumetsatAPIKeyPrompt()
+    prompt.check()
+
     try:
         return Client()
     except Exception as e:
         if ".eumetsatapirc" in str(e):
-            EumetsatAPI().ask_user_and_save()
+            prompt.ask_user_and_save()
             return Client()
 
         raise
 
 
 class EumetsatRetriever(MultiSource):
-    def __init__(self, collection_id, *args, **kwargs):
-        assert isinstance(collection_id, str)
+    def __init__(self, collection, *args, **kwargs):
+        assert isinstance(collection, str)
 
         c = client()
-        super().__init__(c.products(collection_id), *args, **kwargs)
+        super().__init__(
+            c.products(
+                collection,
+                *args,
+                **kwargs,
+            )
+        )
 
 
 source = EumetsatRetriever
