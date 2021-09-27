@@ -1,7 +1,7 @@
 ## eumetsat
 
 A source plugin for climetlab
-```
+```python
 
 !pip install climetlab climetlab-eumetsat
 import climetlab as cml
