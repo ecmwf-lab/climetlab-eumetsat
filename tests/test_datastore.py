@@ -23,14 +23,11 @@ def test_load_source_1():
     xds = ds.to_xarray()
     print(xds)
 
-def f():
-    print('dddd')
 
 def test_load_source_2():
 
     ds = cml.load_source(
         "eumetsat-datastore",
-        _observer=f,
         collection="EO:EUM:DAT:METOP:GLB-SST-NC",
         start_date="2016-07-23T17:58:00Z",
         end_date="2016-07-24T06:01:03Z",
